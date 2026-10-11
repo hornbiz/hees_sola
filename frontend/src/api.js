@@ -45,13 +45,19 @@ async function getCsrfToken() {
 		return csrfToken;
 	}
 
-	const res = await fetch("/api/method/hees_sola.api.get_csrf_token", {
-		method: "POST",
-		credentials: "include",
-	});
-	if (res.ok) {
-		const data = await res.json();
-		csrfToken = (data.message && data.message.csrf_token) || "";
+	// Some setups don't allow POST to this without a CSRF for anonymous requests.
+	// Try to fetch a token in a way that Frappe accepts (GET is fine too).
+	try {
+		const res = await fetch("/api/method/hees_sola.api.get_csrf_token", {
+			method: "GET",
+			credentials: "include",
+		});
+		if (res.ok) {
+			const data = await res.json();
+			csrfToken = (data.message && data.message.csrf_token) || "";
+		}
+	} catch (e) {
+		/* ignore */
 	}
 	return csrfToken || "";
 }

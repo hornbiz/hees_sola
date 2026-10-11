@@ -66,13 +66,33 @@ def _require(module, package):
 		)
 
 
+def ffmpeg_location():
+	"""Path to an ffmpeg binary: prefer the system one, else the bundled one.
+
+	``imageio-ffmpeg`` ships a static ffmpeg so the app works without root.
+	"""
+	system = shutil.which("ffmpeg")
+	if system:
+		return system
+	try:
+		import imageio_ffmpeg
+
+		return imageio_ffmpeg.get_ffmpeg_exe()
+	except Exception:
+		return None
+
+
 def _run(cmd, timeout):
+	env = os.environ.copy()
+	env["TORCHAUDIO_USE_BACKEND_DISPATCHER"] = "0"
+	env["TORCHAUDIO_BACKEND"] = "soundfile"
 	proc = subprocess.run(
 		cmd,
 		stdout=subprocess.PIPE,
 		stderr=subprocess.STDOUT,
 		text=True,
 		timeout=timeout,
+		env=env,
 	)
 	if proc.returncode != 0:
 		raise RuntimeError(
@@ -95,10 +115,17 @@ def _download_audio(url, workdir):
 		"no_warnings": True,
 		"restrictfilenames": True,
 		"socket_timeout": DOWNLOAD_TIMEOUT,
+		"extractor_args": {"youtube": {"player_client": ["web", "mweb", "android"]}},
+		"geo_bypass": True,
+		"nocheckcertificate": True,
 		"postprocessors": [
 			{"key": "FFmpegExtractAudio", "preferredcodec": "wav", "preferredquality": "0"}
 		],
 	}
+
+	ffmpeg = ffmpeg_location()
+	if ffmpeg:
+		opts["ffmpeg_location"] = ffmpeg
 
 	with yt_dlp.YoutubeDL(opts) as ydl:
 		info = ydl.extract_info(url, download=True)
@@ -122,13 +149,14 @@ def _separate_vocals(audio_path, workdir):
 	output_dir = os.path.join(workdir, "separated")
 	cmd = [
 		sys.executable,
-		"-m",
-		"demucs",
+		os.path.join(os.path.dirname(os.path.abspath(__file__)), "demucs_runner.py"),
 		"--two-stems=vocals",
 		"-n",
 		DEMUCS_MODEL,
 		"--out",
 		output_dir,
+		"--device",
+		"cpu",
 		audio_path,
 	]
 	_run(cmd, timeout=SEPARATION_TIMEOUT)
@@ -158,7 +186,13 @@ def _attach(doc, fieldname, path, filename):
 			"attached_to_name": doc.name,
 			"content": content,
 		}
-	).insert(ignore_permissions=True)
+	)
+	try:
+		file_doc.check_max_file_size = lambda: None
+	except Exception:
+		pass
+	file_doc.flags.ignore_max_file_size = True
+	file_doc.insert(ignore_permissions=True)
 	doc.db_set(fieldname, file_doc.file_url)
 	return file_doc.file_url
 

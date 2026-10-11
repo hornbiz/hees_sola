@@ -13,6 +13,10 @@ dependencies = [
     "yt-dlp>=2024.10.0",
     # Source separation model used to isolate the vocals (pulls in torch).
     "demucs>=4.0.1",
+    # Audio file I/O for Demucs (replaces TorchCodec, which needs system FFmpeg libs).
+    "soundfile>=0.12.1",
+    # Bundled static ffmpeg so the app works without root.
+    "imageio-ffmpeg>=0.5.1",
 ]
 
 [build-system]
