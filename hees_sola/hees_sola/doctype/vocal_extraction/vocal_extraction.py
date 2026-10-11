@@ -10,6 +10,9 @@ class VocalExtraction(Document):
 		if self.source_url:
 			self.platform = detect_platform(self.source_url)
 
+	def before_insert(self):
+		self.access_key = frappe.generate_hash(length=24)
+
 	def after_insert(self):
 		self.queue_download()
 

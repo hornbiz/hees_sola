@@ -20,6 +20,7 @@
   "instrumental_file",
   "column_break_output",
   "audio_file",
+  "access_key",
   "diagnostics_section",
   "error_log"
  ],
@@ -104,6 +105,15 @@
    "fieldname": "audio_file",
    "fieldtype": "Attach",
    "label": "Original Audio",
+   "read_only": 1
+  },
+  {
+   "description": "Secret that lets the visitor who created this extraction (even a guest) access it.",
+   "fieldname": "access_key",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Access Key",
+   "no_copy": 1,
    "read_only": 1
   },
   {

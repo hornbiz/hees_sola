@@ -1,0 +1,10 @@
+{
+  "name": "hees_sola",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "postinstall": "cd frontend && yarn install",
+    "dev": "cd frontend && yarn dev",
+    "build": "cd frontend && yarn build"
+  }
+}
