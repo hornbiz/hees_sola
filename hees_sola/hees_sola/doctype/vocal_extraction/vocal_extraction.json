@@ -62,7 +62,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
-   "options": "Queued\nDownloading\nSeparating\nCompleted\nFailed",
+   "options": "Queued\nDownloading\nDownloaded\nSeparating\nCompleted\nFailed",
    "read_only": 1
   },
   {

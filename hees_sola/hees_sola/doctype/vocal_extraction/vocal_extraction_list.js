@@ -3,6 +3,7 @@ frappe.listview_settings["Vocal Extraction"] = {
 		const colors = {
 			Queued: "gray",
 			Downloading: "orange",
+			Downloaded: "purple",
 			Separating: "blue",
 			Completed: "green",
 			Failed: "red",

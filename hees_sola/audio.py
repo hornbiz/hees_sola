@@ -1,10 +1,10 @@
 """Core pipeline: download audio from a social media URL and isolate the vocals.
 
-The heavy lifting is delegated to two well-known tools:
+The work happens in two explicit stages so the UI can show them separately:
 
-* ``yt-dlp``   - downloads the best audio track from nearly any media URL.
-* ``demucs``   - a source separation model that splits a song into
-  ``vocals`` and ``no_vocals`` (accompaniment) stems.
+1. ``process_download``   - fetch the audio track with ``yt-dlp`` and attach it.
+2. ``process_separation`` - split the downloaded audio with ``demucs`` into
+   ``vocals`` (the words) and ``no_vocals`` (the music) stems.
 """
 
 import os
@@ -163,33 +163,60 @@ def _attach(doc, fieldname, path, filename):
 	return file_doc.file_url
 
 
+def _local_path(file_url):
+	name = frappe.db.get_value("File", {"file_url": file_url}, "name")
+	if not name:
+		raise RuntimeError(f"Attached file not found: {file_url}")
+	return frappe.get_doc("File", name).get_full_path()
+
+
 def _set_status(docname, status, **fields):
 	frappe.db.set_value("Vocal Extraction", docname, {"status": status, **fields})
 	frappe.db.commit()
 
 
-def process_extraction(docname):
-	"""Background job: download, separate and attach the isolated vocals."""
+def process_download(docname):
+	"""Stage 1: download the audio from the source URL and attach it."""
 	doc = frappe.get_doc("Vocal Extraction", docname)
 	workdir = _workdir(docname)
 
 	try:
-		_set_status(docname, "Downloading", started_at=now_datetime())
+		_set_status(docname, "Downloading", started_at=now_datetime(), error_log=None)
 		audio_path, title = _download_audio(doc.source_url, workdir)
 		if title:
 			frappe.db.set_value("Vocal Extraction", docname, "title", title)
+		_attach(doc, "audio_file", audio_path, f"{docname}-original.wav")
+		_set_status(docname, "Downloaded")
+	except Exception:
+		error = traceback.format_exc()
+		frappe.log_error(title=f"Vocal Extraction download failed: {docname}", message=error)
+		_set_status(docname, "Failed", error_log=error, completed_at=now_datetime())
+	finally:
+		shutil.rmtree(workdir, ignore_errors=True)
 
-		_set_status(docname, "Separating")
+
+def process_separation(docname):
+	"""Stage 2: remove the music from the previously downloaded audio."""
+	doc = frappe.get_doc("Vocal Extraction", docname)
+	workdir = _workdir(docname)
+
+	try:
+		if not doc.audio_file:
+			raise RuntimeError("No downloaded audio found. Run the download step first.")
+
+		_set_status(docname, "Separating", error_log=None)
+		source = _local_path(doc.audio_file)
+		audio_path = os.path.join(workdir, "source.wav")
+		shutil.copy(source, audio_path)
+
 		vocals_path, instrumental_path = _separate_vocals(audio_path, workdir)
 
 		_attach(doc, "vocals_file", vocals_path, f"{docname}-vocals.wav")
 		_attach(doc, "instrumental_file", instrumental_path, f"{docname}-instrumental.wav")
-		_attach(doc, "audio_file", audio_path, f"{docname}-original.wav")
-
 		_set_status(docname, "Completed", completed_at=now_datetime())
 	except Exception:
 		error = traceback.format_exc()
-		frappe.log_error(title=f"Vocal Extraction failed: {docname}", message=error)
+		frappe.log_error(title=f"Vocal Extraction separation failed: {docname}", message=error)
 		_set_status(docname, "Failed", error_log=error, completed_at=now_datetime())
 	finally:
 		shutil.rmtree(workdir, ignore_errors=True)

@@ -1,0 +1,20 @@
+{
+  "name": "hees-sola-frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --base=/assets/hees_sola/hees_sola/ && npm run copy-html-entry",
+    "copy-html-entry": "cp ../hees_sola/public/hees_sola/index.html ../hees_sola/www/hees_sola.html",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react-swc": "^3.11.0",
+    "vite": "^5.4.19"
+  }
+}

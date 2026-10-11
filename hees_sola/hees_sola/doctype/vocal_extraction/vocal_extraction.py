@@ -11,10 +11,10 @@ class VocalExtraction(Document):
 			self.platform = detect_platform(self.source_url)
 
 	def after_insert(self):
-		self.queue_extraction()
+		self.queue_download()
 
-	def queue_extraction(self):
-		"""Reset the record and hand it off to a background worker."""
+	def queue_download(self):
+		"""Reset the record and download the audio in a background worker."""
 		self.db_set(
 			{
 				"status": "Queued",
@@ -24,7 +24,7 @@ class VocalExtraction(Document):
 			}
 		)
 		frappe.enqueue(
-			"hees_sola.audio.process_extraction",
+			"hees_sola.audio.process_download",
 			queue="long",
 			enqueue_after_commit=True,
 			timeout=3600,
@@ -32,9 +32,27 @@ class VocalExtraction(Document):
 		)
 
 	@frappe.whitelist()
-	def retry(self):
-		"""Re-run an extraction that previously failed or was cancelled."""
-		if self.status in ("Downloading", "Separating"):
-			frappe.throw(_("Extraction is already running."))
-		self.queue_extraction()
+	def download(self):
+		"""(Re)run stage 1 for an extraction."""
+		if self.status == "Downloading":
+			frappe.throw(_("The download is already running."))
+		self.queue_download()
+		return self.status
+
+	@frappe.whitelist()
+	def separate(self):
+		"""Stage 2: remove the music from the downloaded audio."""
+		if not self.audio_file:
+			frappe.throw(_("Download the audio first."))
+		if self.status == "Separating":
+			frappe.throw(_("Removing the music is already running."))
+
+		self.db_set({"status": "Separating", "error_log": None, "completed_at": None})
+		frappe.enqueue(
+			"hees_sola.audio.process_separation",
+			queue="long",
+			enqueue_after_commit=True,
+			timeout=3600,
+			docname=self.name,
+		)
 		return self.status

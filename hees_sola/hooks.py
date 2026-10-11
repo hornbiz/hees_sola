@@ -11,15 +11,14 @@ app_license = "mit"
 # required_apps = []
 
 # Each item in the list will be shown as an app in the apps page
-# add_to_apps_screen = [
-# 	{
-# 		"name": "hees_sola",
-# 		"logo": "/assets/hees_sola/logo.png",
-# 		"title": "Hees Sola",
-# 		"route": "/hees_sola",
-# 		"has_permission": "hees_sola.api.permission.has_app_permission"
-# 	}
-# ]
+add_to_apps_screen = [
+	{
+		"name": "hees_sola",
+		"title": "Hees Sola",
+		"route": "/hees_sola",
+		"has_permission": "hees_sola.permissions.has_app_permission",
+	}
+]
 
 # Includes in <head>
 # ------------------
