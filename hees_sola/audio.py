@@ -24,6 +24,21 @@ SILENCE_THRESHOLD_DB = -40  # frames quieter than this count as silence
 SILENCE_MIN_SECONDS = 1.0  # only gaps longer than this are cut
 SILENCE_KEEP_SECONDS = 0.4  # natural pause left in place of a cut gap
 
+# YouTube refuses datacenter IPs with a "confirm you're not a bot" login wall.
+# Preferred clients come first; each is tried in turn until one is allowed.
+_YOUTUBE_CLIENTS = [
+	["tv_embedded"],
+	["tv"],
+	["ios"],
+	["android"],
+	["web_safari", "mweb"],
+]
+_BOT_CHECK_MARKERS = ("confirm you", "not a bot")
+_BROWSER_USER_AGENT = (
+	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+	"(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+
 _PLATFORM_HOSTS = {
 	"youtube.com": "YouTube",
 	"youtu.be": "YouTube",
@@ -104,12 +119,39 @@ def _run(cmd, timeout):
 	return proc.stdout
 
 
-def _download_audio(url, workdir):
-	"""Download the best available audio track and normalise it to WAV."""
-	_require("yt_dlp", "yt-dlp")
+def _is_bot_check(message):
+	lower = str(message).lower()
+	return all(marker in lower for marker in _BOT_CHECK_MARKERS)
 
-	import yt_dlp
 
+def _settings_value(fieldname):
+	try:
+		return frappe.get_cached_doc("Hees Sola Settings").get(fieldname)
+	except Exception:
+		return None
+
+
+def _resolve_cookiefile():
+	"""Path to a YouTube cookies.txt, from site config or Hees Sola Settings."""
+	path = frappe.conf.get("hees_sola_cookiefile")
+	if path:
+		return path
+	url = _settings_value("cookies_file")
+	if not url:
+		return None
+	try:
+		return _local_path(url)
+	except Exception:
+		return None
+
+
+def _resolve_proxy():
+	"""Proxy URL, from site config or Hees Sola Settings."""
+	return frappe.conf.get("hees_sola_proxy") or _settings_value("proxy")
+
+
+def _download_opts(workdir, clients=None):
+	"""Build yt-dlp options for one download attempt."""
 	opts = {
 		"format": "bestaudio/best",
 		"outtmpl": os.path.join(workdir, "source.%(ext)s"),
@@ -118,39 +160,68 @@ def _download_audio(url, workdir):
 		"no_warnings": True,
 		"restrictfilenames": True,
 		"socket_timeout": DOWNLOAD_TIMEOUT,
-		"extractor_args": {"youtube": {"player_client": ["web", "mweb", "android"]}},
 		"geo_bypass": True,
 		"nocheckcertificate": True,
+		"retries": 3,
+		"extractor_retries": 3,
+		"http_headers": {"User-Agent": _BROWSER_USER_AGENT},
 		"postprocessors": [
 			{"key": "FFmpegExtractAudio", "preferredcodec": "wav", "preferredquality": "0"}
 		],
 	}
+	if clients:
+		opts["extractor_args"] = {"youtube": {"player_client": clients}}
 
 	ffmpeg = ffmpeg_location()
 	if ffmpeg:
 		opts["ffmpeg_location"] = ffmpeg
 
-	# YouTube blocks most datacenter IPs; allow cookies / a proxy via site config.
-	cookiefile = frappe.conf.get("hees_sola_cookiefile")
+	# YouTube blocks most datacenter IPs; a cookies file and/or proxy fixes it.
+	cookiefile = _resolve_cookiefile()
 	if cookiefile:
 		if not os.path.exists(cookiefile):
-			raise RuntimeError(f"hees_sola_cookiefile not found: {cookiefile}")
+			raise RuntimeError(f"Cookies file not found: {cookiefile}")
 		opts["cookiefile"] = cookiefile
-	proxy = frappe.conf.get("hees_sola_proxy")
+	proxy = _resolve_proxy()
 	if proxy:
 		opts["proxy"] = proxy
 
-	try:
-		with yt_dlp.YoutubeDL(opts) as ydl:
-			info = ydl.extract_info(url, download=True)
-	except yt_dlp.utils.DownloadError as e:
-		if "confirm you" in str(e) and "not a bot" in str(e):
-			raise RuntimeError(
-				"YouTube blocked this server (bot check). Set 'hees_sola_cookiefile' "
-				"(cookies.txt) or 'hees_sola_proxy' in site_config.json, or upload the "
-				"audio file instead.\n" + str(e)
-			) from e
-		raise
+	return opts
+
+
+def _download_audio(url, workdir):
+	"""Download the best available audio track and normalise it to WAV.
+
+	For YouTube we retry with player clients that may skip the bot check; a
+	cookies file or proxy (set under Hees Sola Settings, or via site config) is
+	the reliable fix, since it authenticates the request outright.
+	"""
+	_require("yt_dlp", "yt-dlp")
+
+	import yt_dlp
+
+	is_youtube = detect_platform(url) == "YouTube"
+	strategies = _YOUTUBE_CLIENTS if is_youtube else [None]
+
+	info = None
+	last_error = None
+	for clients in strategies:
+		try:
+			with yt_dlp.YoutubeDL(_download_opts(workdir, clients)) as ydl:
+				info = ydl.extract_info(url, download=True)
+			break
+		except yt_dlp.utils.DownloadError as e:
+			last_error = e
+			if is_youtube and _is_bot_check(e):
+				continue
+			raise
+
+	if info is None:
+		raise RuntimeError(
+			"YouTube blocked this server (bot check). Add a YouTube cookies.txt "
+			"or a proxy under 'Hees Sola Settings', or upload the audio file "
+			"instead.\n" + str(last_error)
+		) from last_error
 
 	audio_path = os.path.join(workdir, "source.wav")
 	if not os.path.exists(audio_path):

@@ -1,0 +1,75 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-10-11 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "access_section",
+  "cookies_file",
+  "column_break_access",
+  "proxy",
+  "help_section",
+  "help_html"
+ ],
+ "fields": [
+  {
+   "fieldname": "access_section",
+   "fieldtype": "Section Break",
+   "label": "YouTube access"
+  },
+  {
+   "description": "Upload a cookies.txt exported from a logged-in YouTube browser session (e.g. the \"Get cookies.txt LOCALLY\" extension). YouTube shows \"Sign in to confirm you're not a bot\" for servers on datacenter IPs; a cookies file is the reliable fix.",
+   "fieldname": "cookies_file",
+   "fieldtype": "Attach",
+   "label": "YouTube cookies.txt"
+  },
+  {
+   "fieldname": "column_break_access",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Optional HTTP/SOCKS proxy to download through a different IP, e.g. http://user:pass@host:port or socks5://host:port.",
+   "fieldname": "proxy",
+   "fieldtype": "Data",
+   "label": "Proxy URL"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "help_section",
+   "fieldtype": "Section Break",
+   "label": "Help"
+  },
+  {
+   "fieldname": "help_html",
+   "fieldtype": "HTML",
+   "options": "<p class=\"text-muted\">These settings are used for every extraction. A cookies file alone is usually enough; set a proxy as well if the server IP stays blocked. Site-config values (<code>hees_sola_cookiefile</code>, <code>hees_sola_proxy</code>) take precedence when set.</p>"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-11 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Hees Sola",
+ "name": "Hees Sola Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
