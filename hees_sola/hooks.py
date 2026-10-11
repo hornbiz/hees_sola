@@ -82,8 +82,8 @@ app_license = "mit"
 # Installation
 # ------------
 
-# before_install = "hees_sola.install.before_install"
-# after_install = "hees_sola.install.after_install"
+before_install = "hees_sola.install.before_install"
+after_install = "hees_sola.install.after_install"
 
 # Uninstallation
 # ------------
