@@ -20,6 +20,9 @@ from frappe.utils import now_datetime
 DEMUCS_MODEL = "htdemucs"
 DOWNLOAD_TIMEOUT = 900
 SEPARATION_TIMEOUT = 2400
+SILENCE_THRESHOLD_DB = -40  # frames quieter than this count as silence
+SILENCE_MIN_SECONDS = 1.0  # only gaps longer than this are cut
+SILENCE_KEEP_SECONDS = 0.4  # natural pause left in place of a cut gap
 
 _PLATFORM_HOSTS = {
 	"youtube.com": "YouTube",
@@ -172,6 +175,43 @@ def _separate_vocals(audio_path, workdir):
 	return vocals, instrumental if os.path.exists(instrumental) else None
 
 
+def _trim_silence(path):
+	"""Cut long silent gaps out of a wav file in place, keeping a short pause."""
+	import numpy as np
+	import soundfile as sf
+
+	data, rate = sf.read(path, dtype="float32", always_2d=True)
+	frame = max(1, int(rate * 0.05))
+	count = len(data) // frame
+	if count == 0:
+		return
+
+	frames = data[: count * frame].reshape(count, frame, -1)
+	rms = np.sqrt((frames**2).mean(axis=(1, 2)))
+	silent = rms < 10 ** (SILENCE_THRESHOLD_DB / 20)
+
+	min_frames = int(SILENCE_MIN_SECONDS / 0.05)
+	keep_frames = int(SILENCE_KEEP_SECONDS / 0.05)
+	keep = np.ones(count, dtype=bool)
+
+	start = None
+	for i in range(count + 1):
+		if i < count and silent[i]:
+			if start is None:
+				start = i
+			continue
+		if start is not None and i - start > min_frames:
+			keep[start + keep_frames : i] = False
+		start = None
+
+	if keep.all():
+		return
+
+	out = frames[keep].reshape(-1, data.shape[1])
+	out = np.concatenate([out, data[count * frame :]])
+	sf.write(path, out, rate, subtype="PCM_16")
+
+
 def _attach(doc, fieldname, path, filename):
 	if not path or not os.path.exists(path):
 		return None
@@ -245,6 +285,7 @@ def process_separation(docname):
 
 		vocals_path, instrumental_path = _separate_vocals(audio_path, workdir)
 
+		_trim_silence(vocals_path)
 		_attach(doc, "vocals_file", vocals_path, f"{docname}-vocals.wav")
 		_attach(doc, "instrumental_file", instrumental_path, f"{docname}-instrumental.wav")
 		_set_status(docname, "Completed", completed_at=now_datetime())

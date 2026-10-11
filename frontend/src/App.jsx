@@ -73,7 +73,7 @@ function Player({ title, subtitle, url, accent }) {
 	return (
 		<div className={`card audio-card${accent ? " accent" : ""}`}>
 			<h4>{title}</h4>
-			<p className="muted small">{subtitle}</p>
+			{subtitle && <p className="muted small">{subtitle}</p>}
 			<audio controls preload="none" src={url} />
 			<div className="links">
 				<a className="btn-link" href={url} download>
@@ -187,7 +187,6 @@ export default function App() {
 	};
 
 	const platform = detectPlatform(url);
-	const hasOriginal = job && job.audio_file;
 	const separating = job && job.status === "Separating";
 	const completed = job && job.status === "Completed";
 
@@ -258,14 +257,6 @@ export default function App() {
 					</div>
 				)}
 
-				{hasOriginal && (
-					<Player
-						title="Step 1 - Original audio"
-						subtitle="Downloaded from the source. Play it or save it."
-						url={job.audio_file}
-					/>
-				)}
-
 				{job && job.status === "Downloaded" && (
 					<div className="card action-card">
 						<h3>Step 2 - Remove the music</h3>
@@ -289,23 +280,12 @@ export default function App() {
 
 				{completed && (
 					<>
-						<div className="card action-card">
-							<h3>Step 3 - Vocals only, ready to go</h3>
-							<p className="muted small">Play it below or download the file.</p>
-						</div>
-						<div className="grid">
-							<Player
-								accent
-								title="Vocals only"
-								subtitle="The words, with the music removed"
-								url={job.vocals_file}
-							/>
-							<Player
-								title="Instrumental"
-								subtitle="Background music only"
-								url={job.instrumental_file}
-							/>
-						</div>
+						<Player
+							accent
+							title="Vocals only"
+							subtitle="The words, with the music removed"
+							url={job.vocals_file}
+						/>
 					</>
 				)}
 
