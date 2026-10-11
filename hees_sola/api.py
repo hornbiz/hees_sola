@@ -65,6 +65,8 @@ def download_audio(source_url):
 	parsed = urlparse(source_url)
 	if parsed.scheme not in ("http", "https") or not parsed.hostname:
 		frappe.throw(_("Enter a valid link starting with http:// or https://"))
+	if parsed.hostname.lower() == (frappe.local.request.host or "").split(":")[0].lower():
+		frappe.throw(_("Paste a link to a video or audio post, not a link to this site."))
 
 	doc = frappe.get_doc({"doctype": DOCTYPE, "source_url": source_url}).insert(ignore_permissions=True)
 	return _serialize(doc)

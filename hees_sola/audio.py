@@ -130,8 +130,27 @@ def _download_audio(url, workdir):
 	if ffmpeg:
 		opts["ffmpeg_location"] = ffmpeg
 
-	with yt_dlp.YoutubeDL(opts) as ydl:
-		info = ydl.extract_info(url, download=True)
+	# YouTube blocks most datacenter IPs; allow cookies / a proxy via site config.
+	cookiefile = frappe.conf.get("hees_sola_cookiefile")
+	if cookiefile:
+		if not os.path.exists(cookiefile):
+			raise RuntimeError(f"hees_sola_cookiefile not found: {cookiefile}")
+		opts["cookiefile"] = cookiefile
+	proxy = frappe.conf.get("hees_sola_proxy")
+	if proxy:
+		opts["proxy"] = proxy
+
+	try:
+		with yt_dlp.YoutubeDL(opts) as ydl:
+			info = ydl.extract_info(url, download=True)
+	except yt_dlp.utils.DownloadError as e:
+		if "confirm you" in str(e) and "not a bot" in str(e):
+			raise RuntimeError(
+				"YouTube blocked this server (bot check). Set 'hees_sola_cookiefile' "
+				"(cookies.txt) or 'hees_sola_proxy' in site_config.json, or upload the "
+				"audio file instead.\n" + str(e)
+			) from e
+		raise
 
 	audio_path = os.path.join(workdir, "source.wav")
 	if not os.path.exists(audio_path):
