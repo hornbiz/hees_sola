@@ -1,0 +1,28 @@
+{
+  "name": "Hees Sola",
+  "short_name": "Hees Sola",
+  "description": "Remove the music, keep the words",
+  "start_url": "/hees_sola",
+  "scope": "/hees_sola",
+  "display": "standalone",
+  "background_color": "#1d4ed8",
+  "theme_color": "#1d4ed8",
+  "icons": [
+    {
+      "src": "/assets/hees_sola/hees_sola/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/hees_sola/hees_sola/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/hees_sola/hees_sola/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
