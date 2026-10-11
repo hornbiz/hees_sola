@@ -5,3 +5,8 @@
 tags
 node_modules
 __pycache__
+# Capacitor
+frontend/android/.gradle
+frontend/android/build
+frontend/android/app/build
+frontend/android/local.properties

@@ -1,0 +1,12 @@
+{
+  "appId": "cloud.horntech.heessola",
+  "appName": "Hees Sola",
+  "webDir": "../hees_sola/public/hees_sola",
+  "server": {
+    "url": "https://heessola.horntech.cloud/hees_sola",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}
