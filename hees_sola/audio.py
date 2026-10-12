@@ -110,8 +110,18 @@ def _cookies_path():
 	)
 
 
-def _cookies_file():
-	"""Netscape-format cookies.txt for sites that demand a signed-in session, if present."""
+def _cookies_file(workdir):
+	"""Netscape-format cookies.txt for sites that demand a signed-in session, if configured.
+
+	Either the text itself in site config ``hees_sola_cookies`` (works on managed
+	hosting without file access) or a file at ``hees_sola_cookies_file``.
+	"""
+	text = frappe.conf.get("hees_sola_cookies")
+	if text:
+		path = os.path.join(workdir, "cookies.txt")
+		with open(path, "w") as handle:
+			handle.write(text.replace("\\n", "\n") if "\n" not in text else text)
+		return path
 	path = _cookies_path()
 	return path if os.path.exists(path) else None
 
@@ -142,7 +152,7 @@ def _download_audio(url, workdir):
 	if ffmpeg:
 		opts["ffmpeg_location"] = ffmpeg
 
-	cookies = _cookies_file()
+	cookies = _cookies_file(workdir)
 	if cookies:
 		opts["cookiefile"] = cookies
 	proxy = frappe.conf.get("hees_sola_proxy")
@@ -159,7 +169,7 @@ def _download_audio(url, workdir):
 		if "confirm you" in str(exc) and "bot" in str(exc):
 			raise RuntimeError(
 				"YouTube blocked this server as a bot. An admin must add YouTube cookies "
-				f"(a cookies.txt file at {_cookies_path()}) or set hees_sola_proxy in site_config.json."
+				"(site config key hees_sola_cookies) or set hees_sola_proxy."
 			) from exc
 		raise
 
