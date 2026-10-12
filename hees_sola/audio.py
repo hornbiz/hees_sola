@@ -104,6 +104,18 @@ def _run(cmd, timeout):
 	return proc.stdout
 
 
+def _cookies_path():
+	return frappe.conf.get("hees_sola_cookies_file") or frappe.get_site_path(
+		"private", "hees_sola_cookies.txt"
+	)
+
+
+def _cookies_file():
+	"""Netscape-format cookies.txt for sites that demand a signed-in session, if present."""
+	path = _cookies_path()
+	return path if os.path.exists(path) else None
+
+
 def _download_audio(url, workdir):
 	"""Download the best available audio track and normalise it to WAV."""
 	_require("yt_dlp", "yt-dlp")
@@ -130,8 +142,26 @@ def _download_audio(url, workdir):
 	if ffmpeg:
 		opts["ffmpeg_location"] = ffmpeg
 
-	with yt_dlp.YoutubeDL(opts) as ydl:
-		info = ydl.extract_info(url, download=True)
+	cookies = _cookies_file()
+	if cookies:
+		opts["cookiefile"] = cookies
+	proxy = frappe.conf.get("hees_sola_proxy")
+	if proxy:
+		opts["proxy"] = proxy
+	node = shutil.which("node")
+	if node:
+		opts["js_runtimes"] = {"node": {"path": node}}
+
+	try:
+		with yt_dlp.YoutubeDL(opts) as ydl:
+			info = ydl.extract_info(url, download=True)
+	except yt_dlp.utils.DownloadError as exc:
+		if "confirm you" in str(exc) and "bot" in str(exc):
+			raise RuntimeError(
+				"YouTube blocked this server as a bot. An admin must add YouTube cookies "
+				f"(a cookies.txt file at {_cookies_path()}) or set hees_sola_proxy in site_config.json."
+			) from exc
+		raise
 
 	audio_path = os.path.join(workdir, "source.wav")
 	if not os.path.exists(audio_path):
