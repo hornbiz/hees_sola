@@ -146,6 +146,14 @@ def _cookies_file(workdir):
 	return path if os.path.exists(path) else None
 
 
+def _proxy_url():
+	"""Proxy from site config, tolerating a missing scheme (``host:port`` -> ``http://host:port``)."""
+	proxy = str(frappe.conf.get("hees_sola_proxy") or "").strip()
+	if not proxy:
+		return None
+	return proxy if "://" in proxy else f"http://{proxy}"
+
+
 def _cookies_summary(path):
 	"""Short description of the cookies yt-dlp was given, for diagnosing bot blocks."""
 	if not path:
@@ -191,7 +199,7 @@ def _download_audio(url, workdir):
 	cookies = _cookies_file(workdir)
 	if cookies:
 		opts["cookiefile"] = cookies
-	proxy = frappe.conf.get("hees_sola_proxy")
+	proxy = _proxy_url()
 	if proxy:
 		opts["proxy"] = proxy
 	node = shutil.which("node")
