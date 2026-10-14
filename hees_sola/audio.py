@@ -146,6 +146,22 @@ def _cookies_file(workdir):
 	return path if os.path.exists(path) else None
 
 
+def _cookies_summary(path):
+	"""Short description of the cookies yt-dlp was given, for diagnosing bot blocks."""
+	if not path:
+		return "no cookies configured"
+	try:
+		from yt_dlp.cookies import YoutubeDLCookieJar
+
+		jar = YoutubeDLCookieJar(path)
+		jar.load(ignore_discard=True, ignore_expires=True)
+		names = {cookie.name for cookie in jar}
+	except Exception:
+		return "cookies could not be read"
+	signed_in = "yes" if {"SID", "LOGIN_INFO"} <= names else "no"
+	return f"{len(names)} cookies loaded, signed in: {signed_in}"
+
+
 def _download_audio(url, workdir):
 	"""Download the best available audio track and normalise it to WAV."""
 	_require("yt_dlp", "yt-dlp")
@@ -188,8 +204,9 @@ def _download_audio(url, workdir):
 	except yt_dlp.utils.DownloadError as exc:
 		if "confirm you" in str(exc) and "bot" in str(exc):
 			raise RuntimeError(
-				"YouTube blocked this server as a bot. An admin must add YouTube cookies "
-				"(site config key hees_sola_cookies) or set hees_sola_proxy."
+				f"YouTube blocked this server as a bot ({_cookies_summary(cookies)}). "
+				"An admin must add fresh signed-in YouTube cookies (site config key hees_sola_cookies) "
+				"or set hees_sola_proxy."
 			) from exc
 		raise
 
