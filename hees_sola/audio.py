@@ -8,6 +8,7 @@ The work happens in two explicit stages so the UI can show them separately:
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -110,6 +111,25 @@ def _cookies_path():
 	)
 
 
+_COOKIE_RECORD = re.compile(
+	r"(#HttpOnly_)?(\.?[A-Za-z0-9.-]+)\s+(TRUE|FALSE)\s+(\S+)\s+(TRUE|FALSE)\s+(\d+)\s+(\S+)\s+(\S+)"
+)
+
+
+def _normalise_cookies(text):
+	"""Rebuild a Netscape cookies.txt whose tabs/newlines were flattened to spaces.
+
+	Config editors often collapse the pasted file onto one line; the cookie
+	records themselves are still recognisable, so re-emit one per line.
+	"""
+	if "\t" in text:
+		return text.replace("\\n", "\n") if "\n" not in text else text
+	lines = ["# Netscape HTTP Cookie File"]
+	for prefix, domain, subdomains, path, secure, expiry, name, value in _COOKIE_RECORD.findall(text):
+		lines.append("\t".join([(prefix or "") + domain, subdomains, path, secure, expiry, name, value]))
+	return "\n".join(lines) + "\n"
+
+
 def _cookies_file(workdir):
 	"""Netscape-format cookies.txt for sites that demand a signed-in session, if configured.
 
@@ -120,7 +140,7 @@ def _cookies_file(workdir):
 	if text:
 		path = os.path.join(workdir, "cookies.txt")
 		with open(path, "w") as handle:
-			handle.write(text.replace("\\n", "\n") if "\n" not in text else text)
+			handle.write(_normalise_cookies(text))
 		return path
 	path = _cookies_path()
 	return path if os.path.exists(path) else None
