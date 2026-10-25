@@ -61,6 +61,8 @@ function Result({ url }) {
 	);
 }
 
+const MAX_POLL_FAILURES = 10;
+
 export default function App() {
 	const [url, setUrl] = useState("");
 	const [job, setJob] = useState(null);
@@ -68,6 +70,7 @@ export default function App() {
 	const [history, setHistory] = useState(loadHistory);
 	const pollRef = useRef(null);
 	const separatingRef = useRef(null);
+	const failuresRef = useRef(0);
 
 	const stopPolling = useCallback(() => {
 		clearInterval(pollRef.current);
@@ -88,9 +91,12 @@ export default function App() {
 	const startPolling = useCallback(
 		(name, key) => {
 			stopPolling();
+			failuresRef.current = 0;
 			const tick = async () => {
 				try {
 					const data = await call("hees_sola.api.get_extraction", { name, key });
+					failuresRef.current = 0;
+					setError("");
 					setJob(data);
 					remember(data);
 					if (data.status === "Downloaded" && separatingRef.current !== name) {
@@ -99,6 +105,9 @@ export default function App() {
 					}
 					if (!WORKING.includes(data.status)) stopPolling();
 				} catch (e) {
+					// A dropped connection or a restarting server is transient: keep polling.
+					const transient = !e.status || e.status >= 502;
+					if (transient && ++failuresRef.current < MAX_POLL_FAILURES) return;
 					stopPolling();
 					setError(e.message || "Could not load this extraction.");
 				}
