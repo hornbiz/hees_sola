@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { call } from "./api.js";
+import { call, upload } from "./api.js";
+import { canDownloadOnDevice, downloadOnDevice } from "./deviceDownload.js";
 
 const HISTORY_KEY = "hees_sola_history";
 const WORKING = ["Queued", "Downloading", "Downloaded", "Separating"];
@@ -127,9 +128,22 @@ export default function App() {
 		setError("");
 		setJob(null);
 		try {
-			const data = await call("hees_sola.api.download_audio", { source_url: value });
+			const onDevice = canDownloadOnDevice(value);
+			const data = await call("hees_sola.api.download_audio", {
+				source_url: value,
+				client_download: onDevice ? 1 : 0,
+			});
 			setJob(data);
 			remember(data);
+			if (onDevice) {
+				try {
+					const { blob, title } = await downloadOnDevice(value);
+					await upload("hees_sola.api.upload_audio", { name: data.name, key: data.key, title }, blob);
+				} catch (deviceError) {
+					// Could not fetch on this phone: let the server try instead.
+					await call("hees_sola.api.download_on_server", { name: data.name, key: data.key });
+				}
+			}
 			startPolling(data.name, data.key);
 		} catch (err) {
 			setError(err.message || "Could not start the extraction.");

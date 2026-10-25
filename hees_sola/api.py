@@ -18,6 +18,7 @@ from frappe import _
 from frappe.rate_limiter import rate_limit
 
 DOCTYPE = "Vocal Extraction"
+MAX_UPLOAD_BYTES = 150 * 1024 * 1024
 FILE_KINDS = {"vocals": "vocals_file", "audio": "audio_file"}
 
 
@@ -59,15 +60,63 @@ def get_csrf_token():
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
 @rate_limit(limit=10, seconds=3600)
-def download_audio(source_url):
-	"""Stage 1: create an extraction and download the audio in the background."""
+def download_audio(source_url, client_download=0):
+	"""Stage 1: create an extraction and download the audio in the background.
+
+	With ``client_download`` the caller (the mobile app) fetches the audio itself
+	and sends it to ``upload_audio``; call ``download_on_server`` to fall back.
+	"""
 	source_url = (source_url or "").strip()
 	parsed = urlparse(source_url)
 	if parsed.scheme not in ("http", "https") or not parsed.hostname:
 		frappe.throw(_("Enter a valid link starting with http:// or https://"))
 
-	doc = frappe.get_doc({"doctype": DOCTYPE, "source_url": source_url}).insert(ignore_permissions=True)
+	doc = frappe.get_doc({"doctype": DOCTYPE, "source_url": source_url})
+	doc.flags.client_download = bool(int(client_download or 0))
+	doc.insert(ignore_permissions=True)
 	return _serialize(doc)
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def download_on_server(name, key):
+	"""Fall back to downloading on the server when the device could not."""
+	doc = _load(name, key)
+	if doc.status in ("Queued", "Failed") and not doc.audio_file:
+		doc.queue_download()
+	return _serialize(frappe.get_doc(DOCTYPE, name))
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+@rate_limit(limit=20, seconds=3600)
+def upload_audio(name, key, title=None):
+	"""Receive audio the user's device downloaded (multipart field ``file``)."""
+	import os
+	import tempfile
+
+	from hees_sola.audio import ingest_upload
+
+	doc = _load(name, key)
+	if doc.audio_file or doc.status not in ("Queued", "Failed"):
+		frappe.throw(_("This extraction already has audio."))
+
+	upload = frappe.request.files.get("file") if frappe.request else None
+	if not upload:
+		frappe.throw(_("No audio file received."))
+
+	fd, path = tempfile.mkstemp(suffix=".upload")
+	try:
+		size = 0
+		with os.fdopen(fd, "wb") as handle:
+			while chunk := upload.stream.read(1024 * 1024):
+				size += len(chunk)
+				if size > MAX_UPLOAD_BYTES:
+					frappe.throw(_("The audio file is too large."))
+				handle.write(chunk)
+		ingest_upload(doc, path, title)
+	finally:
+		if os.path.exists(path):
+			os.remove(path)
+	return _serialize(frappe.get_doc(DOCTYPE, name))
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])

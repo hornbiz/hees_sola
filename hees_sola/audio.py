@@ -733,6 +733,30 @@ def process_download(docname):
 		shutil.rmtree(workdir, ignore_errors=True)
 
 
+def ingest_upload(doc, upload_path, title=None):
+	"""Convert audio fetched by the user's own device to WAV and attach it."""
+	workdir = _workdir(doc.name)
+	try:
+		wav_path = os.path.join(workdir, "uploaded.wav")
+		ffmpeg = ffmpeg_location()
+		if not ffmpeg:
+			raise RuntimeError("ffmpeg is not available on the server.")
+		proc = subprocess.run(
+			[ffmpeg, "-y", "-i", upload_path, "-vn", "-ac", "2", "-ar", "44100", wav_path],
+			stdout=subprocess.PIPE,
+			stderr=subprocess.PIPE,
+			timeout=600,
+		)
+		if proc.returncode != 0 or not os.path.exists(wav_path):
+			raise RuntimeError("The uploaded file is not valid audio.")
+		if title:
+			frappe.db.set_value("Vocal Extraction", doc.name, "title", title[:140])
+		_attach(doc, "audio_file", wav_path, f"{doc.name}-original.wav")
+		_set_status(doc.name, "Downloaded", started_at=now_datetime(), error_log=None)
+	finally:
+		shutil.rmtree(workdir, ignore_errors=True)
+
+
 def process_separation(docname):
 	"""Stage 2: remove the music from the previously downloaded audio."""
 	doc = frappe.get_doc("Vocal Extraction", docname)

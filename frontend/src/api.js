@@ -98,3 +98,35 @@ export async function call(method, args = {}, { retry = true } = {}) {
 }
 
 export const getCsrf = getCsrfToken;
+
+/** POST a file as multipart form data, plus string fields. */
+export async function upload(method, fields, blob, { retry = true } = {}) {
+	const token = await getCsrfToken();
+	const form = new FormData();
+	Object.entries(fields).forEach(([key, value]) => form.append(key, value == null ? "" : value));
+	form.append("file", blob, "audio");
+	const res = await fetch(`/api/method/${method}`, {
+		method: "POST",
+		credentials: "include",
+		headers: { "X-Frappe-CSRF-Token": token },
+		body: form,
+	});
+
+	let payload = {};
+	try {
+		payload = await res.json();
+	} catch (e) {
+		/* empty body */
+	}
+
+	if (res.status === 403 && retry) {
+		csrfToken = null;
+		return upload(method, fields, blob, { retry: false });
+	}
+	if (!res.ok) {
+		const error = new Error(parseServerError(payload) || res.statusText || "Upload failed");
+		error.status = res.status;
+		throw error;
+	}
+	return payload.message;
+}

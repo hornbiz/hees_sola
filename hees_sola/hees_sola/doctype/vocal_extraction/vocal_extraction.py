@@ -14,6 +14,10 @@ class VocalExtraction(Document):
 		self.access_key = frappe.generate_hash(length=24)
 
 	def after_insert(self):
+		if self.flags.client_download:
+			# The user's device fetches the audio and uploads it; see api.upload_audio.
+			self.db_set({"status": "Queued", "error_log": None})
+			return
 		self.queue_download()
 
 	def queue_download(self):
