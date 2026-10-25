@@ -431,7 +431,7 @@ def _download_audio(url, workdir):
 	cookies = _cookies_file(workdir)
 	if cookies:
 		opts["cookiefile"] = cookies
-	proxy = frappe.conf.get("hees_sola_proxy")
+	proxy = _proxy_url()
 	if proxy:
 		opts["proxy"] = proxy
 	node = shutil.which("node")
