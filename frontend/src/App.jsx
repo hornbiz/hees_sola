@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { call, upload } from "./api.js";
+import { watchProgress } from "./realtime.js";
 import { canDownloadOnDevice, downloadOnDevice } from "./deviceDownload.js";
 
 const HISTORY_KEY = "hees_sola_history";
@@ -64,18 +65,39 @@ function Result({ url }) {
 
 const MAX_POLL_FAILURES = 10;
 
+function ProgressBar({ percent = 0, message }) {
+	const value = Math.max(0, Math.min(100, Math.round(percent || 0)));
+	return (
+		<div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value}>
+			<div className="progress-track">
+				<div className="progress-fill" style={{ width: `${value}%` }} />
+			</div>
+			<div className="progress-label">
+				<span>{message || "Working…"}</span>
+				<span>{value}%</span>
+			</div>
+		</div>
+	);
+}
+
 export default function App() {
 	const [url, setUrl] = useState("");
 	const [job, setJob] = useState(null);
 	const [error, setError] = useState("");
 	const [history, setHistory] = useState(loadHistory);
+	const stopRef = useRef(null);
 	const pollRef = useRef(null);
 	const separatingRef = useRef(null);
 	const failuresRef = useRef(0);
+	const connectedRef = useRef(false);
+	const currentRef = useRef(null);
 
 	const stopPolling = useCallback(() => {
-		clearInterval(pollRef.current);
+		clearTimeout(pollRef.current);
 		pollRef.current = null;
+		if (stopRef.current) stopRef.current();
+		stopRef.current = null;
+		currentRef.current = null;
 	}, []);
 
 	const remember = useCallback((data) => {
@@ -93,9 +115,13 @@ export default function App() {
 		(name, key) => {
 			stopPolling();
 			failuresRef.current = 0;
-			const tick = async () => {
+			currentRef.current = name;
+
+			// One status fetch; used on start, on every status change and as a safety net.
+			const refresh = async () => {
 				try {
 					const data = await call("hees_sola.api.get_extraction", { name, key });
+					if (currentRef.current !== name) return;
 					failuresRef.current = 0;
 					setError("");
 					setJob(data);
@@ -106,15 +132,44 @@ export default function App() {
 					}
 					if (!WORKING.includes(data.status)) stopPolling();
 				} catch (e) {
-					// A dropped connection or a restarting server is transient: keep polling.
+					// A dropped connection or a restarting server is transient: keep trying.
 					const transient = !e.status || e.status >= 502;
 					if (transient && ++failuresRef.current < MAX_POLL_FAILURES) return;
 					stopPolling();
 					setError(e.message || "Could not load this extraction.");
 				}
 			};
-			tick();
-			pollRef.current = setInterval(tick, 3000);
+
+			stopRef.current = watchProgress(key, {
+				onEvent: (event) => {
+					if (event.name !== name) return;
+					setJob((prev) => {
+						if (!prev) return prev;
+						return {
+							...prev,
+							status: event.status || prev.status,
+							progress: event.percent,
+							message: event.message || prev.message,
+						};
+					});
+					// Status changes need the full record (title, file URLs).
+					if (event.status) refresh();
+				},
+				onConnect: refresh,
+				onState: (connected) => {
+					connectedRef.current = connected;
+				},
+			});
+
+			// Safety net: rarely while the socket is up, quickly while it is down.
+			const loop = () => {
+				pollRef.current = setTimeout(async () => {
+					await refresh();
+					if (pollRef.current) loop();
+				}, connectedRef.current ? 20000 : 3000);
+			};
+			refresh();
+			loop();
 		},
 		[stopPolling, remember]
 	);
@@ -190,6 +245,7 @@ export default function App() {
 					<section className="card">
 						<h2>{job.title || "Getting your audio…"}</h2>
 						<Steps status={job.status} />
+						{working && <ProgressBar percent={job.progress} message={job.message} />}
 						{working && <p className="muted">This can take a few minutes. You can leave this page open.</p>}
 						{job.status === "Failed" && <p className="error-text">{job.error}</p>}
 					</section>

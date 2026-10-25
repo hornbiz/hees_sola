@@ -17,6 +17,8 @@ import frappe
 from frappe import _
 from frappe.rate_limiter import rate_limit
 
+from hees_sola.audio import get_progress
+
 DOCTYPE = "Vocal Extraction"
 MAX_UPLOAD_BYTES = 150 * 1024 * 1024
 FILE_KINDS = {"vocals": "vocals_file", "audio": "audio_file"}
@@ -41,9 +43,13 @@ def _serialize(doc):
 	if doc.status == "Failed":
 		lines = (doc.error_log or "").strip().splitlines()
 		error = lines[-1] if lines else _("Something went wrong.")
+	progress = get_progress(doc.name)
+	percent = {"Completed": 100}.get(doc.status, progress.get("percent", 0))
 	return {
 		"name": doc.name,
 		"key": doc.access_key,
+		"progress": percent,
+		"message": progress.get("message"),
 		"status": doc.status,
 		"platform": doc.platform,
 		"title": doc.title,

@@ -402,7 +402,7 @@ def _download_via_loader(url, workdir):
 	return output, title
 
 
-def _download_audio(url, workdir):
+def _download_audio(url, workdir, docname=None):
 	"""Download the best available audio track and normalise it to WAV."""
 	_require("yt_dlp", "yt-dlp")
 
@@ -423,6 +423,22 @@ def _download_audio(url, workdir):
 			{"key": "FFmpegExtractAudio", "preferredcodec": "wav", "preferredquality": "0"}
 		],
 	}
+
+	if docname:
+
+		def _hook(d):
+			if d.get("status") == "downloading":
+				total = d.get("total_bytes") or d.get("total_bytes_estimate")
+				if total:
+					publish_progress(
+						docname,
+						percent=int(26 * d.get("downloaded_bytes", 0) / total) + 3,
+						message="Downloading audio…",
+					)
+			elif d.get("status") == "finished":
+				publish_progress(docname, percent=29, message="Converting audio…")
+
+		opts["progress_hooks"] = [_hook]
 
 	ffmpeg = ffmpeg_location()
 	if ffmpeg:
@@ -541,7 +557,7 @@ def _stitch(chunk_paths, output, ffmpeg):
 	_run(cmd, timeout=600)
 
 
-def _separate_vocals(audio_path, workdir):
+def _separate_vocals(audio_path, workdir, docname=None):
 	"""Run Demucs two-stem separation and return (vocals, instrumental) paths.
 
 	Long tracks are split into overlapping chunks. Demucs keeps the whole output
@@ -613,12 +629,18 @@ def _separate_vocals(audio_path, workdir):
 				env_extra=profile["env"],
 			)
 		else:
-			for chunk_path in chunk_paths:
+			for index, chunk_path in enumerate(chunk_paths):
 				_run(
 					_demucs_cmd(chunk_path, output_dir, profile),
 					timeout=profile["timeout"],
 					env_extra=profile["env"],
 				)
+				if docname:
+					publish_progress(
+						docname,
+						percent=32 + int(60 * (index + 1) / len(chunk_paths)),
+						message=f"Removing the music… ({index + 1}/{len(chunk_paths)})",
+					)
 
 			chunk_names = [os.path.splitext(os.path.basename(path))[0] for path in chunk_paths]
 			chunk_vocals = [
@@ -708,9 +730,61 @@ def _local_path(file_url):
 	return frappe.get_doc("File", name).get_full_path()
 
 
+PROGRESS_EVENT = "hees_sola_progress"
+PROGRESS_TTL = 3600
+# Overall bar: download 0-30, separation 32-96, done 100.
+STATUS_PROGRESS = {
+	"Queued": (2, "Waiting to start…"),
+	"Downloading": (3, "Downloading audio…"),
+	"Downloaded": (30, "Audio ready"),
+	"Separating": (32, "Removing the music…"),
+	"Completed": (100, "Done"),
+}
+
+
+def get_progress(docname):
+	"""Last published progress for an extraction: {percent, message} or {}."""
+	return frappe.cache().get_value(f"hees_sola_progress:{docname}") or {}
+
+
+def publish_progress(docname, status=None, percent=None, message=None):
+	"""Push progress to the browser over the realtime socket.
+
+	The room is the extraction's secret access key, so only the visitor who owns
+	the extraction can listen. Repeated identical updates are dropped.
+	"""
+	cache_key = f"hees_sola_progress:{docname}"
+	state = frappe.cache().get_value(cache_key) or {}
+	if not state.get("key"):
+		state["key"] = frappe.db.get_value("Vocal Extraction", docname, "access_key")
+	if status in STATUS_PROGRESS:
+		default_percent, default_message = STATUS_PROGRESS[status]
+		percent = default_percent if percent is None else percent
+		message = message or default_message
+	if percent is None and message is None:
+		return
+	new = {
+		"key": state.get("key"),
+		"percent": state.get("percent", 0) if percent is None else int(percent),
+		"message": message or state.get("message"),
+	}
+	if status != "Queued" and new["percent"] < state.get("percent", 0) and status != "Failed":
+		new["percent"] = state.get("percent", 0)
+	if (new["percent"], new["message"]) == (state.get("percent"), state.get("message")) and not status:
+		return
+	frappe.cache().set_value(cache_key, new, expires_in_sec=PROGRESS_TTL)
+	if new["key"]:
+		frappe.publish_realtime(
+			PROGRESS_EVENT,
+			{"name": docname, "status": status, "percent": new["percent"], "message": new["message"]},
+			task_id=new["key"],
+		)
+
+
 def _set_status(docname, status, **fields):
 	frappe.db.set_value("Vocal Extraction", docname, {"status": status, **fields})
 	frappe.db.commit()
+	publish_progress(docname, status=status)
 
 
 def process_download(docname):
@@ -720,7 +794,7 @@ def process_download(docname):
 
 	try:
 		_set_status(docname, "Downloading", started_at=now_datetime(), error_log=None)
-		audio_path, title = _download_audio(doc.source_url, workdir)
+		audio_path, title = _download_audio(doc.source_url, workdir, docname)
 		if title:
 			frappe.db.set_value("Vocal Extraction", docname, "title", title)
 		_attach(doc, "audio_file", audio_path, f"{docname}-original.wav")
@@ -771,8 +845,9 @@ def process_separation(docname):
 		audio_path = os.path.join(workdir, "source.wav")
 		shutil.copy(source, audio_path)
 
-		vocals_path, instrumental_path = _separate_vocals(audio_path, workdir)
+		vocals_path, instrumental_path = _separate_vocals(audio_path, workdir, docname)
 
+		publish_progress(docname, percent=96, message="Finishing…")
 		_trim_silence(vocals_path)
 		_attach(doc, "vocals_file", vocals_path, f"{docname}-vocals.wav")
 		_attach(doc, "instrumental_file", instrumental_path, f"{docname}-instrumental.wav")
