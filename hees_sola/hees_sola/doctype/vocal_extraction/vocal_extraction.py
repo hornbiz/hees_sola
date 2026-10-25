@@ -55,7 +55,7 @@ class VocalExtraction(Document):
 			"hees_sola.audio.process_separation",
 			queue="long",
 			enqueue_after_commit=True,
-			timeout=3600,
+			timeout=7200,
 			docname=self.name,
 		)
 		return self.status

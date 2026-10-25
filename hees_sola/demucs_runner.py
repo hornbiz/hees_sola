@@ -1,15 +1,31 @@
-"""Run Demucs with soundfile-backed torchaudio I/O.
+"""Run Demucs with soundfile-backed torchaudio I/O when torchaudio is available.
 
-torchaudio >= 2.9 routes load/save through TorchCodec, which needs system
-FFmpeg shared libraries. Patch them with soundfile so Demucs works without root.
+Demucs separation reads audio through ffmpeg and soundfile. When torchaudio is
+installed, patch its load/save helpers to use soundfile as well, because
+torchaudio >= 2.9 routes them through TorchCodec, which needs system FFmpeg
+shared libraries. The patch is skipped when torchaudio is not installed.
 """
 
+import os
 import runpy
 import sys
 
 import soundfile as sf
 import torch
-import torchaudio
+
+try:
+	torch.set_num_threads(int(os.environ.get("DEMUCS_THREADS", "1")))
+except Exception:
+	pass
+try:
+	torch.set_num_interop_threads(1)
+except Exception:
+	pass
+
+try:
+	import torchaudio
+except ImportError:
+	torchaudio = None
 
 
 def _load(uri, *args, **kwargs):
@@ -24,8 +40,9 @@ def _save(uri, src, sample_rate, *args, **kwargs):
 	sf.write(str(uri), data, sample_rate, subtype=subtype)
 
 
-torchaudio.load = _load
-torchaudio.save = _save
+if torchaudio is not None:
+	torchaudio.load = _load
+	torchaudio.save = _save
 
 if __name__ == "__main__":
 	sys.argv[0] = "demucs"

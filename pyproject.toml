@@ -17,6 +17,8 @@ dependencies = [
     "soundfile>=0.12.1",
     # Bundled static ffmpeg so the app works without root.
     "imageio-ffmpeg>=0.5.1",
+    # HTTP client used by the fallback downloader.
+    "requests>=2.28",
 ]
 
 [build-system]
