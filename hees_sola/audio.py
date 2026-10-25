@@ -118,6 +118,15 @@ def _cgroup_memory_limit():
 	return None
 
 
+def _demucs_threads():
+	"""CPU threads for one Demucs run: site config ``hees_sola_demucs_threads`` or up to 4 cores."""
+	try:
+		configured = int(frappe.conf.get("hees_sola_demucs_threads") or 0)
+	except (TypeError, ValueError):
+		configured = 0
+	return max(1, configured or min(4, os.cpu_count() or 1))
+
+
 def _demucs_profile():
 	"""Pick split settings that fit the container's memory limit.
 
@@ -127,6 +136,7 @@ def _demucs_profile():
 	trimming, which is slower but stays below 2 GB.
 	"""
 	limit = _cgroup_memory_limit()
+	threads = _demucs_threads()
 	forced = (frappe.conf.get("hees_sola_demucs_profile") or "").strip().lower()
 	if forced == "lowmem" or (forced != "fast" and limit is not None and limit < FAST_MEMORY_THRESHOLD):
 		return {
@@ -136,8 +146,9 @@ def _demucs_profile():
 			"shifts": 0,
 			"timeout": LOW_MEMORY_SEPARATION_TIMEOUT,
 			"env": {
-				"OMP_NUM_THREADS": "1",
-				"MKL_NUM_THREADS": "1",
+				"OMP_NUM_THREADS": str(threads),
+				"MKL_NUM_THREADS": str(threads),
+				"DEMUCS_THREADS": str(threads),
 				"MALLOC_ARENA_MAX": "1",
 				"MALLOC_TRIM_THRESHOLD_": "131072",
 				"MALLOC_MMAP_THRESHOLD_": "131072",
@@ -150,8 +161,9 @@ def _demucs_profile():
 		"shifts": 0,
 		"timeout": SEPARATION_TIMEOUT,
 		"env": {
-			"OMP_NUM_THREADS": "1",
-			"MKL_NUM_THREADS": "1",
+			"OMP_NUM_THREADS": str(threads),
+			"MKL_NUM_THREADS": str(threads),
+			"DEMUCS_THREADS": str(threads),
 			"MALLOC_ARENA_MAX": "1",
 		},
 	}
