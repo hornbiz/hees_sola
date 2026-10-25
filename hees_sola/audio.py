@@ -402,6 +402,30 @@ def _download_via_loader(url, workdir):
 	return output, title
 
 
+def _proxy_url():
+	"""Proxy from site config, tolerating a missing scheme (``host:port`` -> ``http://host:port``)."""
+	proxy = str(frappe.conf.get("hees_sola_proxy") or "").strip()
+	if not proxy:
+		return None
+	return proxy if "://" in proxy else f"http://{proxy}"
+
+
+def _cookies_summary(path):
+	"""Short description of the cookies yt-dlp was given, for diagnosing bot blocks."""
+	if not path:
+		return "no cookies configured"
+	try:
+		from yt_dlp.cookies import YoutubeDLCookieJar
+
+		jar = YoutubeDLCookieJar(path)
+		jar.load(ignore_discard=True, ignore_expires=True)
+		names = {cookie.name for cookie in jar}
+	except Exception:
+		return "cookies could not be read"
+	signed_in = "yes" if {"SID", "LOGIN_INFO"} <= names else "no"
+	return f"{len(names)} cookies loaded, signed in: {signed_in}"
+
+
 def _download_audio(url, workdir, docname=None):
 	"""Download the best available audio track and normalise it to WAV."""
 	_require("yt_dlp", "yt-dlp")
@@ -471,8 +495,8 @@ def _download_audio(url, workdir, docname=None):
 		if "confirm you" in message and "bot" in message:
 			if cookies:
 				raise RuntimeError(
-					"YouTube blocked this server as a bot. The configured cookies could not "
-					"authenticate the request; they may be expired, revoked or not from a "
+					f"YouTube blocked this server as a bot ({_cookies_summary(cookies)}). The "
+					"configured cookies could not authenticate the request; they may be expired, revoked or not from a "
 					"signed-in YouTube session. Re-export them into hees_sola_cookies or set "
 					"hees_sola_proxy."
 				) from exc
